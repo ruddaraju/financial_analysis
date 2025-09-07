@@ -7,6 +7,11 @@ def get_prices(ticker: str, period = '5y', interval = '1d') -> pd.DataFrame:
     df = yf.download(ticker, period = period, interval = interval, auto_adjust=False, progress = False)
     if df.empty:
         return pd.DataFrame()
+    
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = [c[0] for c in df.columns]
+
+
     df = df.reset_index().rename(columns={
         "Date": "date",
         "Open": "open",
@@ -38,7 +43,7 @@ def run_prices_ingestion():
         return
     all_prices = pd.concat(dataframes, ignore_index = True)
     all_prices["ingested_at"] = pd.Timestamp.utcnow()
-    out_path = "../data_raw/prices_daily.csv"
+    out_path = "data_raw/prices_daily.csv"
     all_prices.to_csv(out_path, index = False)
     print(f"Saved: {out_path} ({len(all_prices):,} rows)")
 

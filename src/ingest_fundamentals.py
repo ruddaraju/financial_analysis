@@ -1,3 +1,4 @@
+import os
 import requests
 import pandas as pd
 from typing import Dict, Any
@@ -13,9 +14,11 @@ def _get_json(params: Dict[str, Any]) -> Dict[str,Any]:
 
 def fetch_overview(ticker: str) ->  pd.DataFrame:
     data = _get_json({'function': 'OVERVIEW', 'symbol': ticker})
+
+
     if not data or "Symbol" not in data:
         return pd.DataFrame()
-    df = pd.DateFrame([data])
+    df = pd.DataFrame([data])
     df['ticker'] = ticker
 
     keep = [
@@ -99,4 +102,19 @@ def run_fundamentals_ingestion():
         print("Saved: data_raw/fund_cashflow_qtr.csv")
 
 if __name__ == "__main__":
-    run_fundamentals_ingestion()
+
+    all_data = []
+    for ticker in UNIVERSE:
+        df = fetch_overview(ticker)
+        if not df.empty:
+            all_data.append(df)
+
+    if all_data:
+        final_df = pd.concat(all_data, ignore_index=True)
+
+        os.makedirs("data_raw", exist_ok=True)
+
+        final_df.to_csv("data_raw/fundamentals.csv", index=False)
+        print("Data saved to data_raw/fundamentals.csv")
+    else:
+        print("No data fetched")
