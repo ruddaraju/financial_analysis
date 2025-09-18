@@ -38,6 +38,7 @@ def fetch_overview(ticker: str) ->  pd.DataFrame:
 
     return df
 
+
 def _normalize_statement(data: Dict[str,Any],ticker: str, key: str) -> pd.DataFrame:
     raw = data.get(key, [])
     if not raw:
@@ -66,6 +67,24 @@ def fetch_cashflow_qtr(ticker: str) -> pd.DataFrame:
     return _normalize_statement(data, ticker, "quarterlyReports")
 
 
+
+
+def save_or_append(df: pd.DataFrame, path: str, subset: list[str]):
+    if os.path.exists(path):
+        existing = pd.read_csv(path, parse_dates = ['fiscalDateEnding'], low_memory = False)
+        combined = (
+            pd.concat([existing, df], ignore_index=True)
+            .drop_duplicates(subset = subset)
+            .sort_values(subset=subset) 
+        )
+    else:
+        combined = df
+    
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    combined.to_csv(path, index = False)
+    print(f'Saved/updated: {path} ({len(combined):,} rows)')
+
+
 def run_fundamentals_ingestion():
     ov_frames, inc_frames, bal_frames, cf_frames = [], [], [], []
     for t in UNIVERSE:
@@ -79,42 +98,27 @@ def run_fundamentals_ingestion():
             rate_limit_sleep()
 
             bal = fetch_balance_qtr(t)
-            if not bal.empty: ov_frames.append(bal)
+            if not bal.empty: bal_frames.append(bal)
             rate_limit_sleep()
 
             cf = fetch_cashflow_qtr(t)
-            if not cf.empty: ov_frames.append(cf)
+            if not cf.empty: cf_frames.append(cf)
             rate_limit_sleep()
         except Exception as e:
             print(f"[WARN] {t}: {e}")
 
-    if ov_frames:
-        pd.concat(ov_frames, ignore_index=True).to_csv("../data_raw/company_overview.csv", index=False)
-        print("Saved: data_raw/company_overview.csv")
     if inc_frames:
-        pd.concat(inc_frames, ignore_index=True).to_csv("../data_raw/fund_income_qtr.csv", index=False)
-        print("Saved: data_raw/fund_income_qtr.csv")
+        inc_all = pd.concat(inc_frames, ignore_index=True)
+        save_or_append(inc_all, "data_raw/fund_income_qtr.csv", ["ticker", "fiscalDateEnding"])
+
     if bal_frames:
-        pd.concat(bal_frames, ignore_index=True).to_csv("../data_raw/fund_balance_qtr.csv", index=False)
-        print("Saved: data_raw/fund_balance_qtr.csv")
+        bal_all = pd.concat(bal_frames, ignore_index=True)
+        save_or_append(bal_all, "data_raw/fund_balance_qtr.csv", ["ticker", "fiscalDateEnding"])
+
     if cf_frames:
-        pd.concat(cf_frames, ignore_index=True).to_csv("../data_raw/fund_cashflow_qtr.csv", index=False)
-        print("Saved: data_raw/fund_cashflow_qtr.csv")
+        cf_all = pd.concat(cf_frames, ignore_index=True)
+        save_or_append(cf_all, "data_raw/fund_cashflow_qtr.csv", ["ticker", "fiscalDateEnding"])
+
 
 if __name__ == "__main__":
-
-    all_data = []
-    for ticker in UNIVERSE:
-        df = fetch_overview(ticker)
-        if not df.empty:
-            all_data.append(df)
-
-    if all_data:
-        final_df = pd.concat(all_data, ignore_index=True)
-
-        os.makedirs("data_raw", exist_ok=True)
-
-        final_df.to_csv("data_raw/fundamentals.csv", index=False)
-        print("Data saved to data_raw/fundamentals.csv")
-    else:
-        print("No data fetched")
+    run_fundamentals_ingestion()
